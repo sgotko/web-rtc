@@ -1,36 +1,28 @@
-// store/usePeerStore.ts
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
+import { WsMessageSender, type WebSocketMessage } from "./wsMessages";
 
-type WebSocketMessage =
-  | { type: "join"; userId: string }
-  | { type: "leave"; userId: string }
-  | { type: "offer"; data: RTCSessionDescriptionInit }
-  | { type: "answer"; data: RTCSessionDescriptionInit }
-  | { type: "candidate"; data: RTCIceCandidateInit };
-
-// Global state
 interface PeerState {
   roomId: string;
   userId: string;
   isConnected: boolean;
   error: string | null;
   localStream: MediaStream | null;
-  remoteStream: MediaStream | null;
+  remoteStreams: Set<MediaStream>;
 
-  // Ссылки (не экспортируем)
   wsRef: WebSocket | null;
+  wsSender: WsMessageSender | null;
   peerRef: RTCPeerConnection | null;
 }
 
-// Тип действий
 interface PeerActions {
   setRoomId: (id: string) => void;
   setUserId: (id: string) => void;
   setIsConnected: (connected: boolean) => void;
   setError: (error: string | null) => void;
   setLocalStream: (stream: MediaStream | null) => void;
-  setRemoteStream: (stream: MediaStream | null) => void;
+  addRemoteStream: (stream: MediaStream) => void;
+  removeRemoteStream: (stream: MediaStream) => void;
   joinRoom: () => Promise<void>;
   sendOffer: () => Promise<void>;
   handleOffer: (offer: RTCSessionDescriptionInit) => Promise<void>;
@@ -45,22 +37,20 @@ interface PeerActions {
   leaveRoom: () => void;
 }
 
-// Единый тип стора
-export type UsePeerStore = PeerState & PeerActions;
+export type PeerStore = PeerState & PeerActions;
 
-export const usePeerStore = create<UsePeerStore>()(
+export const usePeerStore = create<PeerStore>()(
   devtools((set, get) => ({
-    // Состояние
     roomId: "",
     userId: "",
     isConnected: false,
     error: null,
     localStream: null,
-    remoteStream: null,
+    remoteStreams: new WeakSet(),
     wsRef: null,
     peerRef: null,
-    isCameraOn: true,
-    isMicrophoneOn: true,
+    isCameraOn: false,
+    isMicrophoneOn: false,
 
     toggleCamera: () => {
       const { localStream } = get();
@@ -86,18 +76,19 @@ export const usePeerStore = create<UsePeerStore>()(
       reset();
     },
 
-    // Действия
     setRoomId: (roomId) => set({ roomId }),
     setUserId: (userId) => set({ userId }),
     setIsConnected: (isConnected) => set({ isConnected }),
     setError: (error) => set({ error }),
     setLocalStream: (localStream) => set({ localStream }),
-    setRemoteStream: (remoteStream) => set({ remoteStream }),
+    addRemoteStream: (remoteStream) => get().remoteStreams.add(remoteStream),
+    removeRemoteStream: (remoteStream) =>
+      get().remoteStreams.delete(remoteStream),
 
     joinRoom: async () => {
       const state = get();
       if (!state.roomId || !state.userId) {
-        set({ error: "Введите ID комнаты и пользователя" });
+        set({ error: "Enter user ID and room ID" });
         return;
       }
 
@@ -113,52 +104,45 @@ export const usePeerStore = create<UsePeerStore>()(
 
         const ws = new WebSocket(`ws://localhost:3300`);
         set({ wsRef: ws });
+        const wsSender = new WsMessageSender(ws, state.roomId, state.userId);
 
         ws.onopen = () => {
-          console.log("✅ WebSocket подключён");
-          // eslint-disable-next-line no-debugger
-          debugger;
-          ws.send(
-            JSON.stringify({
-              type: "join",
-              data: {
-                roomId: state.roomId,
-                userId: state.userId,
-              },
-            }),
-          );
+          console.log("WebSocket connected");
+          wsSender.join();
         };
         ws.onclose = () => set({ isConnected: false });
 
         ws.onerror = (err) => {
-          console.error("❌ WebSocket ошибка:", err);
-          set({ error: "Ошибка WebSocket" });
+          console.error("WebSocket error:", err);
+          set({ error: "WebSocket error" });
         };
 
         ws.onmessage = async (event) => {
           try {
             const data: WebSocketMessage = JSON.parse(event.data);
-            console.log("📩 Получено:", data);
+            console.log("Received:", data);
 
-            if (data.type === "join" && data.userId !== state.userId) {
-              console.log("👨‍💻 Собеседник в комнате — отправляем offer");
+            if (data.type === "join" && data.payload.userId !== state.userId) {
+              console.log("New user in the room, send offer");
               await get().sendOffer();
-            } else if (data.type === "offer") {
-              await get().handleOffer(data.data);
-            } else if (data.type === "answer") {
-              await get().handleAnswer(data.data);
+            } else if (data.type === "sdp") {
+              if (data.payload.sdp.type === "answer") {
+                await get().handleAnswer(data.payload.sdp);
+              } else if (data.payload.sdp.type === "offer") {
+                await get().handleOffer(data.payload.sdp);
+              }
             } else if (data.type === "candidate") {
-              await get().handleCandidate(data.data);
+              await get().handleCandidate(data.payload.candidate);
             }
           } catch (err) {
-            console.error("❌ Ошибка обработки сообщения:", err);
+            console.error("Error during message handing", err);
           }
         };
 
         set({ isConnected: true });
       } catch (err) {
         set({
-          error: `Не удалось получить доступ к камере/микрофону: ${(err as Error).message}`,
+          error: `Cannot get access to the microphone or camera: ${(err as Error).message}`,
         });
       }
     },
@@ -184,8 +168,8 @@ export const usePeerStore = create<UsePeerStore>()(
         };
 
         peer.ontrack = (event) => {
-          console.log("📥 Новый трек:", event.track.kind);
-          set({ remoteStream: event.streams[0] });
+          console.log("New track", event.track.kind);
+          get().addRemoteStream(event.streams[0]);
         };
       }
 
@@ -225,8 +209,8 @@ export const usePeerStore = create<UsePeerStore>()(
         };
 
         peer.ontrack = (event) => {
-          console.log("📥 Новый трек:", event.track.kind);
-          set({ remoteStream: event.streams[0] });
+          console.log("New track", event.track.kind);
+          get().addRemoteStream(event.streams[0]);
         };
       }
 
@@ -271,7 +255,7 @@ export const usePeerStore = create<UsePeerStore>()(
         isConnected: false,
         error: null,
         localStream: null,
-        remoteStream: null,
+        remoteStreams: new Set(),
         wsRef: null,
         peerRef: null,
       });

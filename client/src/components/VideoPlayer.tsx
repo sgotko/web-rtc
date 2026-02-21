@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from "react";
 
 interface VideoPlayerProps {
   stream: MediaStream | null;
@@ -6,7 +6,11 @@ interface VideoPlayerProps {
   muted?: boolean;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ stream, label, muted = false }) => {
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({
+  stream,
+  label,
+  muted = false,
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {

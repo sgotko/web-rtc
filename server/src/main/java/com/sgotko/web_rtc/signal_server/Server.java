@@ -1,20 +1,13 @@
 package com.sgotko.web_rtc.signal_server;
 
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 import org.slf4j.LoggerFactory;
 
-import com.sgotko.web_rtc.signal_server.message.WsMessage;
+import com.sgotko.web_rtc.signal_server.message.WebsocketMessage;
 
 public class Server extends WebSocketServer {
 
@@ -27,45 +20,21 @@ public class Server extends WebSocketServer {
 		this.roomService = roomService;
 	}
 
-	public static Map<String, List<String>> parseQuery(final String query) {
-		Map<String, List<String>> params = new LinkedHashMap<>();
-		if (query == null || query.isEmpty())
-			return params;
-
-		for (String pair : query.split("&")) {
-			final String[] keyValue = pair.split("=", 2);
-			final String key = URLDecoder.decode(keyValue[0], StandardCharsets.UTF_8);
-			final String value = keyValue.length > 1 ? URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8) : "";
-
-			params.computeIfAbsent(key, k -> new ArrayList<>()).add(value);
-		}
-		return params;
-	}
-
 	@Override
 	public void onOpen(final WebSocket conn, final ClientHandshake handshake) {
-		final String resource = handshake.getResourceDescriptor();
-		final URI uri = URI.create(resource);
-		System.out.println(uri.getQuery());
-		LOGGER.info("on open {}", handshake.toString());
+		LOGGER.debug("Connection opened {}", conn);
 	}
 
 	@Override
 	public void onClose(final WebSocket conn, final int code, final String reason, final boolean remote) {
-		LOGGER.info("on close {}");
+		LOGGER.debug("Connection closed {}", conn);
 	}
 
 	@Override
 	public void onMessage(final WebSocket conn, final String message) {
 		try {
-			WsMessage wsMessage = WsMessageParser.parse(message);
-			switch (wsMessage.type()) {
-			case "join": {
-//				roomService.enter(wsMessage.data()., message);
-			}
-			default:
+			WebsocketMessage wsMessage = WebsocketMessage.fromJson(message);
 
-			}
 		} catch (IllegalArgumentException e) {
 			LOGGER.error(e.getMessage());
 		}

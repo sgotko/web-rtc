@@ -1,5 +1,5 @@
 package com.sgotko.web_rtc.signal_server.message;
 
-public interface EventData {
+public interface MessagePayload {
 
 }

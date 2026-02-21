@@ -1,12 +1,15 @@
-import React from 'react';
-import { usePeerStore } from '../store/usePeerStore';
+import React from "react";
+import { usePeerStore } from "../store/usePeerStore";
 
 export const JoinForm: React.FC = () => {
-  const { roomId, userId, error, setRoomId, setUserId, joinRoom } = usePeerStore();
+  const { roomId, userId, error, setRoomId, setUserId, joinRoom } =
+    usePeerStore();
 
   return (
     <div className="setup">
-      {error && <div style={{ color: 'red', marginBottom: '10px' }}>{error}</div>}
+      {error && (
+        <div style={{ color: "red", marginBottom: "10px" }}>{error}</div>
+      )}
       <input
         type="text"
         placeholder="ID комнаты"

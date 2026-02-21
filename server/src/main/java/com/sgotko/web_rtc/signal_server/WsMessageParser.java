@@ -7,9 +7,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
-import com.sgotko.web_rtc.signal_server.message.EventData;
-import com.sgotko.web_rtc.signal_server.message.JoinMessage;
-import com.sgotko.web_rtc.signal_server.message.WsMessage;
+import com.sgotko.web_rtc.signal_server.message.JoinRoomMessage;
+import com.sgotko.web_rtc.signal_server.message.LeaveRoomMessage;
+import com.sgotko.web_rtc.signal_server.message.MessagePayload;
+import com.sgotko.web_rtc.signal_server.message.SendMessage;
+import com.sgotko.web_rtc.signal_server.message.WebsocketMessage;
 
 public class WsMessageParser {
 
@@ -19,31 +21,33 @@ public class WsMessageParser {
 		MAPPER.registerModule(new Jdk8Module()).registerModule(new ParameterNamesModule());
 	}
 
-	private static final Map<String, Class<? extends EventData>> TYPE_TO_CLASS = new ConcurrentHashMap<>();
+	private static final Map<String, Class<? extends MessagePayload>> TYPE_TO_CLASS = new ConcurrentHashMap<>();
 
 	static {
-		TYPE_TO_CLASS.put("join", JoinMessage.class);
+		TYPE_TO_CLASS.put("joinRoom", JoinRoomMessage.class);
+		TYPE_TO_CLASS.put("leaveRoom", LeaveRoomMessage.class);
+		TYPE_TO_CLASS.put("sendMessage", SendMessage.class);
 	}
 
-	public static WsMessage parse(final String json) {
+	public static WebsocketMessage parse(final String json) throws IllegalArgumentException {
 		try {
 			JsonNode root = MAPPER.readTree(json);
 
 			String type = getRequiredText(root, "type");
-			JsonNode dataNode = root.get("data");
-			if (dataNode == null || !dataNode.isObject()) {
-				throw new IllegalArgumentException("'data' must be an object");
+			JsonNode payloadNode = root.get("payload");
+			if (payloadNode == null || !payloadNode.isObject()) {
+				throw new IllegalArgumentException("'payload' must be an object");
 			}
 
-			Class<? extends EventData> dataType = TYPE_TO_CLASS.get(type);
-			if (dataType == null) {
-				throw new IllegalArgumentException("Unknown message type: " + type);
-			}
+//			Class<? extends MessagePayload> dataType = TYPE_TO_CLASS.get(type);
+//			if (dataType == null) {
+//				throw new IllegalArgumentException("Unknown message type: " + type);
+//			}
+//
+//			MessagePayload data = MAPPER.treeToValue(payloadNode, dataType);
+//			JsonValidator.validate(data);
 
-			EventData data = MAPPER.treeToValue(dataNode, dataType);
-			JsonValidator.validate(data);
-
-			return new WsMessage(type, data);
+			return new WebsocketMessage(type, null);
 		} catch (Exception e) {
 			throw new IllegalArgumentException("Error during parsing JSON: " + e.getMessage(), e);
 		}
@@ -55,14 +59,6 @@ public class WsMessageParser {
 			throw new IllegalArgumentException("Field '" + field + "' is required and must be a string");
 		}
 		return value.asText();
-	}
-
-	private static long getRequiredNumber(final JsonNode node, final String field) {
-		final JsonNode value = node.get(field);
-		if (value == null || !value.isNumber()) {
-			throw new IllegalArgumentException("Field '" + field + "' is required and must be a number");
-		}
-		return value.asLong();
 	}
 
 }
